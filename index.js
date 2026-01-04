@@ -35,21 +35,20 @@ app.use(express.json());
 
 // JWT middleware
 const verifyJWT = async (req, res, next) => {
-  const token = req.headers?.authorization?.split(" ")[1];
-  // console.log("access token here: >>>>", token);
-  console.log(req.tokenEmail);
+  const authHeader = req.headers.authorization;
 
-  if (!token)
-    return res.status(401).send({ message: "Unauthorized Access!  here " });
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized: No token" });
+  }
+
+  const token = authHeader.split(" ")[1];
 
   try {
     const decoded = await admin.auth().verifyIdToken(token);
     req.tokenEmail = decoded.email;
-    // console.log("Decoded JWT:", decoded);
     next();
-  } catch (err) {
-    console.error("JWT Verification Error:", err);
-    return res.status(401).send({ message: "Unauthorized Access!", err });
+  } catch (error) {
+    return res.status(401).send({ message: "Unauthorized: Invalid token" });
   }
 };
 
@@ -121,7 +120,7 @@ async function run() {
     });
 
     // Get logged-in user's purchases
-    app.get("/my-purchases", verifyJWT, async (req, res) => {
+    /* app.get("/my-purchases", verifyJWT, async (req, res) => {
       const email = req.tokenEmail; // logged-in user email
       try {
         const purchasedModels = await modelscollections
@@ -134,7 +133,7 @@ async function run() {
           .status(500)
           .send({ message: "Error fetching purchased models", err });
       }
-    });
+    }); */
 
     /* ........ user related api here.......... */
 
@@ -150,6 +149,81 @@ async function run() {
       const result = await userscollections.insertOne(user);
       res.send(result);
     });
+
+    // GET profile
+    // GET public profile info by email (no token needed)
+   app.get("/profile/:email", async (req, res) => {
+  try {
+    const email = decodeURIComponent(req.params.email).trim();
+
+    const user = await userscollections.findOne(
+      { user_mail: email },
+      {
+        projection: {
+          user_name: 1,
+          user_photo: 1,
+          role: 1,
+          _id: 0,
+        },
+      }
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error("Profile fetch error:", error);
+    res.status(500).json({ message: "Failed to fetch profile" });
+  }
+});
+
+/* ***************************************************888 */
+
+// Dashboard overview stats
+app.get("/dashboard-stats", verifyJWT, async (req, res) => {
+  try {
+    const email = req.tokenEmail;
+
+    const totalModels = await modelscollections.countDocuments();
+    const myModels = await modelscollections.countDocuments({
+      createdBy: email,
+    });
+
+    const totalUsers = await userscollections.countDocuments();
+
+    res.send({
+      totalModels,
+      myModels,
+      totalUsers,
+    });
+  } catch (error) {
+    res.status(500).send({ message: "Failed to load dashboard stats" });
+  }
+});
+
+
+
+// Dashboard models table
+app.get("/dashboard-models", verifyJWT, async (req, res) => {
+  try {
+    const models = await modelscollections
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .toArray();
+
+    res.send(models);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to load models table" });
+  }
+});
+
+
+
+
+
 
     /*  await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!"); */
